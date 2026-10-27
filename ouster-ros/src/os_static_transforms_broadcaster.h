@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include <tf2_ros/static_transform_broadcaster.h>
+#include <tf2_ros/static_transform_broadcaster.hpp>
 
 namespace ouster_ros {
 

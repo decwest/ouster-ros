@@ -9,6 +9,8 @@ project(ouster_ros)
 # ==== Requirements ====
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(class_loader REQUIRED)
+find_package(tf2 REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -26,7 +28,7 @@ find_package(OpenCV REQUIRED)
 # ==== Options ====
 add_compile_options(-Wall -Wextra)
 if(NOT DEFINED CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD 20)
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
 endif()
 option(CMAKE_POSITION_INDEPENDENT_CODE "Build position independent code." ON)
@@ -77,9 +79,12 @@ set(ouster_ros_library_deps
   OpenCV
 )
 
-ament_target_dependencies(ouster_ros_library
-  ${ouster_ros_library_deps}
-)
+foreach(dependency IN LISTS ouster_ros_library_deps)
+  if(dependency STREQUAL "OpenCV")
+    continue()  # Already linked below.
+  endif()
+  target_link_libraries(ouster_ros_library ${${dependency}_TARGETS})
+endforeach()
 
 target_link_libraries(ouster_ros_library
   # PUBLIC (unsupported)
@@ -104,7 +109,7 @@ function(create_ros2_component
       "OUSTER_ROS_BUILDING_DLL"
   )
 
-  ament_target_dependencies(${component_lib_name}
+  set(component_dependencies
     rclcpp
     class_loader
     rclcpp_components
@@ -114,6 +119,9 @@ function(create_ros2_component
     geometry_msgs
     ${additonal_dependencies}
   )
+  foreach(dependency IN LISTS component_dependencies)
+    target_link_libraries(${component_lib_name} ${${dependency}_TARGETS})
+  endforeach()
 
   target_link_libraries(${component_lib_name}
     ouster_ros_library
@@ -189,6 +197,10 @@ endif()
 # ==== Test ====
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+  # The SDK ships a FindGTest.cmake which keeps GTest_FOUND inside a function.
+  # Let ament use CMake's standard finder so the test target is created.
+  set(_saved_cmake_module_path ${CMAKE_MODULE_PATH})
+  list(REMOVE_ITEM CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/ouster-sdk/cmake")
   ament_add_gtest(${PROJECT_NAME}_test
     src/os_ros.cpp
     test/test_main.cpp
@@ -197,10 +209,8 @@ if(BUILD_TESTING)
     test/point_transform_test.cpp
     test/point_cloud_compose_test.cpp
   )
-  ament_target_dependencies(${PROJECT_NAME}_test
-    rclcpp
-    ouster_sensor_msgs
-  )
+  set(CMAKE_MODULE_PATH ${_saved_cmake_module_path})
+  target_link_libraries(${PROJECT_NAME}_test ${rclcpp_TARGETS} ${ouster_sensor_msgs_TARGETS})
   target_include_directories(${PROJECT_NAME}_test PUBLIC
     ${_ouster_ros_INCLUDE_DIRS}
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
